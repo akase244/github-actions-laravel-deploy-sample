@@ -1,0 +1,39 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: composer
+        run: |
+          cd src
+          composer install --prefer-dist --no-interaction
+      - name: npm
+        run: |
+          cd src
+          npm install
+          npm run prod
+      - name: dot env copy
+        run: |
+          cd src
+          cp .env.production .env
+      - name: application key generate
+        run: |
+          cd src
+          php artisan key:generate
+      - name: ssh key generate
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > id_rsa
+          chmod 600 id_rsa
+      - name: rsync deploy
+        run: rsync -av -e "ssh -i id_rsa -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT }}" src ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/var/www/
+      - name: database migration
+        run: ssh -i id_rsa -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} 'cd /var/www/src && php artisan migrate --force'
